@@ -1,6 +1,6 @@
 ﻿using Neutrino.Utils;
 
-namespace Neutrino.BinarySearch;
+namespace Neutrino.ContentSearch;
 
 public class RabinKarp
 {
