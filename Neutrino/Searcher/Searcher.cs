@@ -63,30 +63,9 @@ public class Searcher
         while (!ct.IsCancellationRequested && !RequestQueue.Reader.Completion.IsCompleted)
         {
             var val = await RequestQueue.Reader.ReadAsync();
-            int depth = val.SearchDepth;
-            FileSystemEnumerator<object> ffe = new FastFileEnumerator<SearcherState>(val.FolderName, curState, (res, data) =>
-            {
-                var fullPath = res.ToFullPath();
-                if (res.IsDirectory && depth + 1 < Options.MaxDepth)
-                {
-                    data.Requests.Add(new SearchRequest()
-                    {
-                        FolderName = fullPath,
-                        SearchDepth = depth + 1
-                    });
-                }
-                else
-                {
-                    if (NameMatcher.IsMatch(fullPath))
-                    {
-                        data.Results.Add(new SearchResult()
-                        {
-                            FullFilePath = fullPath,
-                            RelFilePath = res.FileName.ToString()
-                        });
-                    }
-                }
-            }, _enumerationOptions);
+            curState.Depth = val.SearchDepth;
+
+            FileSystemEnumerator<object> ffe = new FastFileEnumerator<SearcherState>(val.FolderName, curState, ResultHandler, _enumerationOptions);
             while (ffe.MoveNext()) {} ;
             foreach (var result in curState.Results)
             {
@@ -121,6 +100,22 @@ public class Searcher
             }
         }
     }
+    
+    void ResultHandler(FileSystemEntry res, SearcherState data)
+    {
+        var fullPath = res.ToFullPath();
+        if (res.IsDirectory && data.Depth + 1 < Options.MaxDepth)
+        {
+            data.Requests.Add(new SearchRequest() { FolderName = fullPath, SearchDepth = data.Depth + 1});
+        }
+        else
+        {
+            if (NameMatcher.IsMatch(fullPath))
+            {
+                data.Results.Add(new SearchResult() { FullFilePath = fullPath, RelFilePath = res.FileName.ToString() });
+            }
+        }
+    }
 
-    public record SearcherState(List<SearchRequest> Requests, List<SearchResult> Results);
+    public record struct SearcherState(List<SearchRequest> Requests, List<SearchResult> Results, int Depth = 0);
 }
