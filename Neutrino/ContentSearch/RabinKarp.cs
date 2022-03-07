@@ -28,16 +28,19 @@ public class RabinKarp
     {
         if(key.Key.Length > _rawBuffer.Size) return false;
         int len = key.Key.Length;
-        long adjHash;
-        if (key.Key.Length == _rawBuffer.Size)
+        if (len > 5)
         {
-            adjHash = _buffer.Back();
+            long adjHash;
+            if (key.Key.Length == _rawBuffer.Size)
+            {
+                adjHash = _buffer.Back();
+            }
+            else
+            {
+                adjHash = (_buffer.Back() - _buffer[_buffer.Size - len - 1] + _hasher.Modulo) % _hasher.Modulo;
+            }
+            if(key.Hash != adjHash) return false;
         }
-        else
-        {
-            adjHash = (_buffer.Back() - _buffer[_buffer.Size - len - 1] + _hasher.Modulo) % _hasher.Modulo;
-        }
-        if(key.Hash != adjHash) return false;
         for(int i = 0; i < len; i++)
         {
             if(key.Key[i] != _rawBuffer[_rawBuffer.Size - len + i]) return false;
