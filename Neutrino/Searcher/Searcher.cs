@@ -4,7 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using DotNet.Globbing;
 
-namespace Neutrino;
+namespace Neutrino.Searcher;
 
 public class Searcher
 {

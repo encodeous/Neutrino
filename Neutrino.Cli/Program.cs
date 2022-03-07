@@ -1,6 +1,6 @@
 ﻿using System.Text;
 using Neutrino;
-using Neutrino.TextSearch;
+using Neutrino.BinarySearch;
 
 var data = File.ReadAllBytes("testing.txt");
 var hasher = new Hasher(313, 1_000_000_007);

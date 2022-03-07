@@ -1,6 +1,6 @@
 ﻿using System.IO.Enumeration;
 
-namespace Neutrino;
+namespace Neutrino.Searcher;
 
 public class FastFileEnumerator<T> : FileSystemEnumerator<object>
 {

@@ -1,4 +1,4 @@
-﻿namespace Neutrino;
+﻿namespace Neutrino.Searcher;
 
 public class SearcherIndex
 {

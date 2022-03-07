@@ -1,4 +1,4 @@
-﻿namespace Neutrino.TextSearch;
+﻿namespace Neutrino.BinarySearch;
 
 public class Hasher
 {
