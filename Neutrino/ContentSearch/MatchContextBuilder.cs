@@ -38,8 +38,8 @@ public class MatchContextBuilder
         return this;
     }
     
-    public MatchContext Build()
+    public MatchContext Build(Hasher hasher)
     {
-        return new MatchContext(StartingIndex, Filters);
+        return new MatchContext(StartingIndex, Filters, hasher);
     }
 }

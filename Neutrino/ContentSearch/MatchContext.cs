@@ -17,6 +17,7 @@ public class MatchContext
                 {
                     filter.Key = new SearchKey(filter.Value, hasher);
                 }
+                MaxMatchLength = Math.Max(MaxMatchLength, (int)filter.Length);
             }
         }
     }
@@ -26,6 +27,7 @@ public class MatchContext
     public ReadOnlyCollection<MatchResult> Results => _results.AsReadOnly();
     public bool IsComplete => _filters.Count == 0;
     public bool IsMatch => _filters.Count == 0 && _isMatch;
+    internal int MaxMatchLength = 0;
     public List<MatchResult> _results { get; } = new();
 
     private bool _isMatch = true;
@@ -34,6 +36,7 @@ public class MatchContext
 
     internal void MoveNextByte(RabinKarp karp, long curIndex)
     {
+        if (!_isMatch) return;
         foreach (var filter in _filters)
         {
             filter.Key?.Increment(curIndex);
@@ -47,30 +50,22 @@ public class MatchContext
         var cfilter = _filters.First();
         if (cfilter.Type == ContentFilter.FilterType.Equals)
         {
-            if (karp.Matches(cfilter.Key))
-            {
-                _results.Add(new MatchResult(curIndex - cfilter.Length + 1, curIndex));
-                _filters.Dequeue();
-                if(_filters.Count != 0) _waitUntil = _filters.First().Length + curIndex;
-            }
+            EvaluateEquality(curIndex, karp, true);
         }
         else if (cfilter.Type == ContentFilter.FilterType.NotEquals)
         {
-            if (!karp.Matches(cfilter.Key))
-            {
-                _results.Add(new MatchResult(curIndex - cfilter.Length + 1, curIndex));
-                _filters.Dequeue();
-                if(_filters.Count != 0) _waitUntil = _filters.First().Length + curIndex;
-            }
+            EvaluateEquality(curIndex, karp, false);
         }
-        else if (cfilter.Type == ContentFilter.FilterType.NotEquals)
+    }
+
+    internal void EvaluateEquality(long curIndex, RabinKarp karp, bool expectedEquality)
+    {
+        var cfilter = _filters.First();
+        if (karp.Matches(cfilter.Key) == expectedEquality)
         {
-            if (!karp.Matches(cfilter.Key))
-            {
-                _results.Add(new MatchResult(curIndex - cfilter.Length + 1, curIndex));
-                _filters.Dequeue();
-                if(_filters.Count != 0) _waitUntil = _filters.First().Length + curIndex;
-            }
+            _results.Add(new MatchResult(curIndex - cfilter.Length + 1, curIndex));
+            _filters.Dequeue();
+            if(_filters.Count != 0) _waitUntil = _filters.First().Length + curIndex;
         }
     }
 }

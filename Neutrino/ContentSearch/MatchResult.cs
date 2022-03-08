@@ -1,3 +1,3 @@
 ﻿namespace Neutrino.ContentSearch;
 
-public record MatchResult(long MatchBegin, long MatchEnd)
+public record MatchResult(long MatchBegin, long MatchEnd);

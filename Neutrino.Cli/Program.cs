@@ -1,26 +1,31 @@
 ﻿using System.Text;
+using System.Text.Unicode;
 using Neutrino;
 using Neutrino.ContentSearch;
 
-var data = File.ReadAllBytes("testing.txt");
-var hasher = new Hasher(313, 1_000_000_007);
-var key = new SearchKey(Encoding.UTF8.GetBytes("dabaam\r\ngood morning :)"), hasher);
-var search = new RabinKarp(key.Key.Length, hasher);
+var data = File.OpenRead("testing.txt");
+var bufI = new BufferedStream(data);
 
-int idx = 0;
+var searcher = new ContentSearcher();
 
-foreach(byte b in data)
+var filter = new MatchContextBuilder()
+    .WithFilter(ContentFilter.CreateEquals(Encoding.UTF8.GetBytes("Hello, World!")))
+    .WithFilter(ContentFilter.CreateEquals(Encoding.UTF8.GetBytes("Hello, World!")))
+    .WithFilter(ContentFilter.CreateEquals(Encoding.UTF8.GetBytes("Hello, World!")));
+
+var ctx = searcher.AddPattern("Hello World Matcher", filter);
+
+searcher.Build();
+
+int c = 0;
+
+while ((c = bufI.ReadByte()) != -1)
 {
-    search.AddByte(b);
-    key.Increment();
-    if (search.Matches(key))
-    {
-        Console.WriteLine("Found match at {0}", idx);
-    }
-    hasher.Increment();
-    idx++;
+    if(c == '\r' || c == '\n') continue;
+    searcher.AddByte((byte)c);
 }
 
+Console.WriteLine(ctx.IsMatch);
 
 // var searcher = new Searcher(new DirectoryInfo("C:\\"), new SearchOptions("**/*.txt", Concurrency: 5));
 //
