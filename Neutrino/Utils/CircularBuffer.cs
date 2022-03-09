@@ -46,7 +46,7 @@ using System.Collections.Generic;
     
     For more information, please refer to <https://unlicense.org>
     */
-public class CircularBuffer<T> : IEnumerable<T>
+internal class CircularBuffer<T> : IEnumerable<T>
 {
     private readonly T[] _buffer;
 
@@ -61,9 +61,9 @@ public class CircularBuffer<T> : IEnumerable<T>
     private int _end;
 
     /// <summary>
-    /// The _size. Buffer size.
+    /// Current buffer size (the number of elements that the buffer has).
     /// </summary>
-    private int _size;
+    public int Size;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CircularBuffer{T}"/> class.
@@ -75,6 +75,7 @@ public class CircularBuffer<T> : IEnumerable<T>
     public CircularBuffer(int capacity)
         : this(capacity, new T[] { })
     {
+        Capacity = capacity;
     }
 
     /// <summary>
@@ -111,17 +112,18 @@ public class CircularBuffer<T> : IEnumerable<T>
         _buffer = new T[capacity];
 
         Array.Copy(items, _buffer, items.Length);
-        _size = items.Length;
+        Size = items.Length;
 
         _start = 0;
-        _end = _size == capacity ? 0 : _size;
+        _end = Size == capacity ? 0 : Size;
+        Capacity = capacity;
     }
 
     /// <summary>
     /// Maximum capacity of the buffer. Elements pushed into the buffer after
     /// maximum capacity is reached (IsFull = true), will remove an element.
     /// </summary>
-    public int Capacity => _buffer.Length;
+    public int Capacity;
 
     /// <summary>
     /// Boolean indicating if Circular is at full capacity.
@@ -129,18 +131,13 @@ public class CircularBuffer<T> : IEnumerable<T>
     /// cause elements to be removed from the other end
     /// of the buffer.
     /// </summary>
-    public bool IsFull => Size == Capacity;
-
-    /// <summary>
-    /// Current buffer size (the number of elements that the buffer has).
-    /// </summary>
-    public int Size => _size;
+    public bool IsFull = false;
 
     /// <summary>
     /// Element at the front of the buffer - this[0].
     /// </summary>
     /// <returns>The value of the element of type T at the front of the buffer.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.AggressiveInlining)]
     public T Front()
     {
         ThrowIfEmpty();
@@ -151,10 +148,16 @@ public class CircularBuffer<T> : IEnumerable<T>
     /// Element at the back of the buffer - this[Size - 1].
     /// </summary>
     /// <returns>The value of the element of type T at the back of the buffer.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.AggressiveInlining)]
     public T Back()
     {
         ThrowIfEmpty();
+        return _buffer[(_end != 0 ? _end : Capacity) - 1];
+    }
+    
+    [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.AggressiveInlining)]
+    public T FBack()
+    {
         return _buffer[(_end != 0 ? _end : Capacity) - 1];
     }
 
@@ -169,15 +172,15 @@ public class CircularBuffer<T> : IEnumerable<T>
     {
         get
         {
-            if (_size == 0)
+            if (Size == 0)
             {
                 throw new IndexOutOfRangeException(string.Format("Cannot access index {0}. Buffer is empty", index));
             }
 
-            if (index >= _size)
+            if (index >= Size)
             {
                 throw new IndexOutOfRangeException(string.Format("Cannot access index {0}. Buffer size is {1}", index,
-                    _size));
+                    Size));
             }
 
             int actualIndex = InternalIndex(index);
@@ -185,20 +188,43 @@ public class CircularBuffer<T> : IEnumerable<T>
         }
         set
         {
-            if (_size == 0)
+            if (Size == 0)
             {
                 throw new IndexOutOfRangeException(string.Format("Cannot access index {0}. Buffer is empty", index));
             }
 
-            if (index >= _size)
+            if (index >= Size)
             {
                 throw new IndexOutOfRangeException(string.Format("Cannot access index {0}. Buffer size is {1}", index,
-                    _size));
+                    Size));
             }
 
             int actualIndex = InternalIndex(index);
             _buffer[actualIndex] = value;
         }
+    }
+
+    /// <summary>
+    /// Fast accessor method without bound checks
+    /// </summary>
+    /// <param name="index"></param>
+    /// <returns></returns>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.AggressiveInlining)]
+    public T FGet(int index)
+    {
+        return _buffer[InternalIndex(index)];
+    }
+    
+    /// <summary>
+    /// Fast setter method without bound checks
+    /// </summary>
+    /// <param name="index"></param>
+    /// <param name="value"></param>
+    /// <returns></returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public T FSet(int index, T value)
+    {
+        return _buffer[InternalIndex(index)] = value;
     }
 
     /// <summary>
@@ -209,10 +235,12 @@ public class CircularBuffer<T> : IEnumerable<T>
     /// popped to allow for this new element to fit.
     /// </summary>
     /// <param name="item">Item to push to the back of the buffer</param>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.AggressiveInlining)]
     public void PushBack(T item)
     {
-        if (IsFull)
+        if (Size == Capacity)
         {
+            IsFull = true;
             _buffer[_end] = item;
             Increment(ref _end);
             _start = _end;
@@ -221,7 +249,7 @@ public class CircularBuffer<T> : IEnumerable<T>
         {
             _buffer[_end] = item;
             Increment(ref _end);
-            ++_size;
+            ++Size;
         }
     }
 
@@ -235,17 +263,15 @@ public class CircularBuffer<T> : IEnumerable<T>
     /// <param name="item">Item to push to the front of the buffer</param>
     public void PushFront(T item)
     {
-        if (IsFull)
+        if (Size == Capacity)
         {
-            Decrement(ref _start);
-            _end = _start;
-            _buffer[_start] = item;
+            IsFull = true;
         }
         else
         {
             Decrement(ref _start);
             _buffer[_start] = item;
-            ++_size;
+            ++Size;
         }
     }
 
@@ -257,8 +283,8 @@ public class CircularBuffer<T> : IEnumerable<T>
     {
         ThrowIfEmpty("Cannot take elements from an empty buffer.");
         Decrement(ref _end);
-        _buffer[_end] = default(T);
-        --_size;
+        --Size;
+        IsFull = false;
     }
 
     /// <summary>
@@ -268,10 +294,19 @@ public class CircularBuffer<T> : IEnumerable<T>
     public void PopFront()
     {
         ThrowIfEmpty("Cannot take elements from an empty buffer.");
-        _buffer[_start] = default(T);
         Increment(ref _start);
-        --_size;
+        --Size;
+        IsFull = false;
     }
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void FPopFront()
+    {
+        Increment(ref _start);
+        --Size;
+        IsFull = false;
+    }
+
 
     /// <summary>
     /// Clears the contents of the array. Size = 0, Capacity is unchanged.
@@ -282,8 +317,9 @@ public class CircularBuffer<T> : IEnumerable<T>
         // to clear we just reset everything.
         _start = 0;
         _end = 0;
-        _size = 0;
+        Size = 0;
         Array.Clear(_buffer, 0, _buffer.Length);
+        IsFull = false;
     }
 
     /// <summary>
@@ -352,10 +388,10 @@ public class CircularBuffer<T> : IEnumerable<T>
 
     #endregion
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.AggressiveInlining)]
     private void ThrowIfEmpty(string message = "Cannot access an empty buffer.")
     {
-        if (_size == 0)
+        if (Size == 0)
         {
             throw new InvalidOperationException(message);
         }
@@ -366,7 +402,7 @@ public class CircularBuffer<T> : IEnumerable<T>
     /// around if necessary.
     /// </summary>
     /// <param name="index"></param>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.AggressiveInlining)]
     private void Increment(ref int index)
     {
         if (++index == Capacity)
@@ -380,7 +416,7 @@ public class CircularBuffer<T> : IEnumerable<T>
     /// around if necessary.
     /// </summary>
     /// <param name="index"></param>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.AggressiveInlining)]
     private void Decrement(ref int index)
     {
         if (index == 0)
@@ -400,7 +436,7 @@ public class CircularBuffer<T> : IEnumerable<T>
     /// <param name='index'>
     /// External index.
     /// </param>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.AggressiveInlining)]
     private int InternalIndex(int index)
     {
         return _start + (index < (Capacity - _start) ? index : index - Capacity);
@@ -418,7 +454,7 @@ public class CircularBuffer<T> : IEnumerable<T>
 
     private ArraySegment<T> ArrayOne()
     {
-        if (_size == 0)
+        if (Size == 0)
         {
             return new ArraySegment<T>(new T[0]);
         }
@@ -434,7 +470,7 @@ public class CircularBuffer<T> : IEnumerable<T>
 
     private ArraySegment<T> ArrayTwo()
     {
-        if (_size == 0)
+        if (Size == 0)
         {
             return new ArraySegment<T>(new T[0]);
         }

@@ -19,18 +19,13 @@ public class AnyFixedFilter : ContentFilter
         
     }
 
-    public override void Increment(long curIndex)
-    {
-        
-    }
-
-    public override bool IsMatch(RabinKarp karp)
+    public override bool IsMatch(MatchContext ctx, RabinKarp karp)
     {
         return true;
     }
 
-    public override MatchResult? MoveNextByte(RabinKarp karp, MatchContext context)
+    public override MatchResult MoveNextByte(RabinKarp karp, MatchContext context)
     {
-        return new MatchResult(context._curIndex - Length + 1, context._curIndex);
+        return new MatchResult(context._curIndex - Length + 1, context._curIndex, true);
     }
 }

@@ -25,7 +25,7 @@ public class SearchKey
         _hasher.Reset();
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.AggressiveInlining)]
     public void Increment(long currentIndex)
     {
         if(Key.Length <= 5) return;

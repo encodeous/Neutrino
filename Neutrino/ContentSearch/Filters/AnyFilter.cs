@@ -16,20 +16,15 @@ public class AnyFilter : ContentFilter
         
     }
 
-    public override void Increment(long curIndex)
-    {
-        
-    }
-
-    public override bool IsMatch(RabinKarp karp)
+    public override bool IsMatch(MatchContext ctx, RabinKarp karp)
     {
         return true;
     }
 
-    public override MatchResult? MoveNextByte(RabinKarp karp, MatchContext context)
+    public override MatchResult MoveNextByte(RabinKarp karp, MatchContext context)
     {
         context._filters.Dequeue();
         context._isWildcard = true;
-        return null;
+        return new MatchResult(0, 0, false);
     }
 }

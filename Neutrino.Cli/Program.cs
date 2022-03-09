@@ -4,16 +4,20 @@ using Neutrino;
 using Neutrino.ContentSearch;
 using Neutrino.ContentSearch.Filters;
 
+var fi = new FileInfo("testing.txt");
+
 var data = File.OpenRead("testing.txt");
 var bufI = new BufferedStream(data);
 
+var start = DateTime.UtcNow;
+
 var searcher = new ContentSearcher();
+
+var byt = Encoding.UTF8.GetBytes("Hello, World!l@");
 
 var filter = new MatchContextBuilder()
     .WithFilter(new AnyFilter())
-    .WithFilter(new EqualFilter(Encoding.UTF8.GetBytes("Hello, World!")))
-    .WithFilter(new AnyFixedFilter(1))
-    .WithFilter(new EqualFilter(Encoding.UTF8.GetBytes("@")));
+    .WithFilter(new EqualFilter(byt));
 var ctx = searcher.AddPattern("Hello World Matcher", filter);
 
 searcher.Build();
@@ -26,7 +30,7 @@ while ((c = bufI.ReadByte()) != -1)
     searcher.AddByte((byte)c);
 }
 
-Console.WriteLine(ctx.IsMatch);
+Console.WriteLine($"Match: {ctx.IsMatch}, elapsed: {DateTime.UtcNow - start}, collisions: {searcher.Collisions}");
 
 foreach (var v in ctx.Results)
 {

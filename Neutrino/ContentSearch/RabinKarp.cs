@@ -1,4 +1,5 @@
-﻿using Neutrino.Utils;
+﻿using System.Runtime.CompilerServices;
+using Neutrino.Utils;
 
 namespace Neutrino.ContentSearch;
 
@@ -15,16 +16,16 @@ public class RabinKarp
         _rawBuffer = new CircularBuffer<byte>(maxLength + 1);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.AggressiveInlining)]
     public void AddByte(byte val)
     {
-        var cVal = _hasher.UpdateHash(_buffer.Size == 0 ? 0 : _buffer.Back(), val);
-        if(_buffer.IsFull) _buffer.PopFront();
-        if(_rawBuffer.IsFull) _rawBuffer.PopFront();
+        var cVal = _hasher.UpdateHash(_buffer.FBack(), val);
         _buffer.PushBack(cVal);
         _rawBuffer.PushBack(val);
     }
 
-    public bool Matches(SearchKey key)
+    [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.AggressiveInlining)]
+    public bool Matches(MatchContext ctx, SearchKey key)
     {
         if(key.Key.Length > _rawBuffer.Size) return false;
         int len = key.Key.Length;
@@ -35,19 +36,24 @@ public class RabinKarp
             long adjHash;
             if (last == -1)
             {
-                adjHash = _buffer[first];
+                adjHash = _buffer.FGet(first);
             }
             else
             {
-                adjHash = (_buffer[first] - _buffer[last] + _hasher.Modulo) % _hasher.Modulo;
+                adjHash = (_buffer.FGet(first) - _buffer.FGet(last) + _hasher.Modulo) % _hasher.Modulo;
             }
             if(key.Hash != adjHash) return false;
+            ctx.Collisions++;
         }
         for(int i = 0; i < len; i++)
         {
-            if(key.Key[i] != _rawBuffer[last + i + 1]) return false;
+            if(key.Key[i] != _rawBuffer.FGet(last + i + 1)) return false;
         }
 
+        if (len > 5)
+        {
+            ctx.Collisions--;
+        }
         return true;
     }
 }

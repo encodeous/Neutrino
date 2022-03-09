@@ -6,8 +6,8 @@ public class EqualFilter : HashedFilter
     {
     }
 
-    public override bool IsMatch(RabinKarp karp)
+    public override bool IsMatch(MatchContext ctx, RabinKarp karp)
     {
-        return karp.Matches(Key);
+        return karp.Matches(ctx, Key);
     }
 }

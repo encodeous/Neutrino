@@ -1,4 +1,5 @@
 ﻿using System.Collections.ObjectModel;
+using System.Runtime.CompilerServices;
 using Neutrino.ContentSearch.Filters;
 
 namespace Neutrino.ContentSearch;
@@ -57,10 +58,13 @@ public class MatchContext
         {
             MaxMatchLength = Math.Max(MaxMatchLength, (int)filter.GetRealLength());
         }
+        _filterCache = _filters.ToArray();
     }
 
+    internal int Collisions;
     public long StartingIndex { get; }
     internal Queue<ContentFilter> _filters { get; }
+    internal ContentFilter[] _filterCache { get; private set; }
     public ReadOnlyCollection<MatchResult> Results => _results.AsReadOnly();
     public bool IsComplete => _filters.Count == 0;
     public bool IsMatch => _filters.Count == 0 && _isMatch;
@@ -72,24 +76,29 @@ public class MatchContext
     internal long _lastIndex;
     internal long _curIndex;
     internal bool _isWildcard;
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     internal void MoveNextByte(RabinKarp karp, long curIndex)
     {
         if (!_isMatch || _filters.Count == 0) return;
         _curIndex = curIndex;
-        foreach (var filter in _filters)
+        foreach (var filter in _filterCache)
         {
-            filter.Increment(curIndex);
+            foreach (var key in filter.Keys)
+            {
+                key.Increment(curIndex);
+            }
         }
 
         var curFilter = _filters.Peek();
         if (!ContentFilter.IsInBounds(curFilter.Length, this)) return;
         var res = curFilter.MoveNextByte(karp, this);
-        if (res.HasValue)
+        if (res.IsSuccess)
         {
             _filters.Dequeue();
+            _filterCache = _filters.ToArray();
             if (_isWildcard)
             {
-                _results.Add(new MatchResult(_lastIndex, res.Value.MatchBegin - 1));
+                _results.Add(new MatchResult(_lastIndex, res.MatchBegin - 1, true));
             }
 
             if (curFilter is CompoundFilter cf)
@@ -97,13 +106,13 @@ public class MatchContext
                 long startIndex = curIndex - cf.Length + 1;
                 foreach (var cmpFilter in cf._filters)
                 {
-                    _results.Add(new MatchResult(startIndex, startIndex + cmpFilter.Length - 1));
+                    _results.Add(new MatchResult(startIndex, startIndex + cmpFilter.Length - 1, true));
                     startIndex += cmpFilter.Length;
                 }
             }
             else
             {
-                _results.Add(res.Value);
+                _results.Add(res);
             }
             _lastIndex = curIndex;
             _isWildcard = false;

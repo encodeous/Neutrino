@@ -19,20 +19,20 @@ public class Hasher
         Index = 0;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.AggressiveInlining)]
     public void Increment()
     {
         CurrentBase = (CurrentBase * Prime) % Modulo;
         Index++;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.AggressiveInlining)]
     public long UpdateHash(long oldHash, byte newData)
     {
         return (oldHash + ((newData + 1) * CurrentBase) % Modulo) % Modulo;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.AggressiveInlining)]
     public long UpdateKey(long oldHash)
     {
         return (oldHash * Prime) % Modulo;

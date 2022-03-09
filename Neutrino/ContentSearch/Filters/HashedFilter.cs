@@ -14,11 +14,7 @@ public abstract class HashedFilter : ContentFilter
     public override void Initialize(Hasher hasher, int offset)
     {
         Key = new SearchKey(Value, hasher, offset);
-    }
-
-    public override void Increment(long curIndex)
-    {
-        Key.Increment(curIndex);
+        Keys = new[] { Key };
     }
 
     public override long GetRealLength()
@@ -26,16 +22,16 @@ public abstract class HashedFilter : ContentFilter
         return Value.Length;
     }
 
-    public override MatchResult? MoveNextByte(RabinKarp karp, MatchContext context)
+    public override MatchResult MoveNextByte(RabinKarp karp, MatchContext context)
     {
         var index = context._curIndex;
         var lastIndex = context._lastIndex;
         var tLength = index - lastIndex;
-        if (tLength < Length) return null;
-        if (IsMatch(karp))
+        if (tLength < Length) return new MatchResult(0, 0, false);
+        if (IsMatch(context, karp))
         {
-            return new MatchResult(index - Key.Key.Length + 1, index);
+            return new MatchResult(index - Key.Key.Length + 1, index, true);
         }
-        return null;
+        return new MatchResult(0, 0, false);
     }
 }

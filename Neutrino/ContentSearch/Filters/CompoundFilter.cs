@@ -40,27 +40,27 @@ internal class CompoundFilter : ContentFilter
             _filters[i].Initialize(hasher, cOffset);
             cOffset += (int)_filters[i].Length;
         }
-    }
 
-    public override void Increment(long curIndex)
-    {
+        var lst = new List<SearchKey>();
         foreach (var filter in _filters)
         {
-            filter.Increment(curIndex);
+            lst.AddRange(filter.Keys);
         }
+
+        Keys = lst.ToArray();
     }
 
-    public override bool IsMatch(RabinKarp karp)
+    public override bool IsMatch(MatchContext ctx, RabinKarp karp)
     {
         throw new NotImplementedException();
     }
 
-    public override MatchResult? MoveNextByte(RabinKarp karp, MatchContext context)
+    public override MatchResult MoveNextByte(RabinKarp karp, MatchContext context)
     {
         bool matches = true;
         foreach (var filter in _filters)
         {
-            if (!filter.IsMatch(karp))
+            if (!filter.IsMatch(context, karp))
             {
                 matches = false;
                 break;
@@ -69,9 +69,9 @@ internal class CompoundFilter : ContentFilter
 
         if (matches)
         {
-            return new MatchResult(context._curIndex - Length + 1, context._curIndex);
+            return new MatchResult(context._curIndex - Length + 1, context._curIndex, true);
         }
 
-        return null;
+        return new MatchResult(0, 0, false);
     }
 }
