@@ -2,7 +2,7 @@
 
 namespace Neutrino.ContentSearch.Filters;
 
-public class AnyFixedFilter : ContentFilter
+public sealed class AnyFixedFilter : ContentFilter
 {
     public AnyFixedFilter(long fixedLength) : base(FilterType.AnyFixed)
     {

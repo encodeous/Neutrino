@@ -1,6 +1,6 @@
 ﻿namespace Neutrino.ContentSearch.Filters;
 
-public class AnyFilter : ContentFilter
+public sealed class AnyFilter : ContentFilter
 {
     public AnyFilter() : base(FilterType.Any)
     {

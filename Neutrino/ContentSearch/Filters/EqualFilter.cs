@@ -1,6 +1,6 @@
 ﻿namespace Neutrino.ContentSearch.Filters;
 
-public class EqualFilter : HashedFilter
+public sealed class EqualFilter : HashedFilter
 {
     public EqualFilter(byte[] value) : base(FilterType.Equals, value)
     {

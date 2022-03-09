@@ -2,7 +2,7 @@
 
 namespace Neutrino.ContentSearch.Filters;
 
-internal class CompoundFilter : ContentFilter
+internal sealed class CompoundFilter : ContentFilter
 {
     internal ContentFilter[] _filters;
     private long realLength = 0;

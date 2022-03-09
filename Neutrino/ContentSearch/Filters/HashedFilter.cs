@@ -11,18 +11,18 @@ public abstract class HashedFilter : ContentFilter
         Length = value.Length;
     }
 
-    public override void Initialize(Hasher hasher, int offset)
+    public sealed override void Initialize(Hasher hasher, int offset)
     {
         Key = new SearchKey(Value, hasher, offset);
         Keys = new[] { Key };
     }
 
-    public override long GetRealLength()
+    public sealed override long GetRealLength()
     {
         return Value.Length;
     }
 
-    public override MatchResult MoveNextByte(RabinKarp karp, MatchContext context)
+    public sealed override MatchResult MoveNextByte(RabinKarp karp, MatchContext context)
     {
         var index = context._curIndex;
         var lastIndex = context._lastIndex;
