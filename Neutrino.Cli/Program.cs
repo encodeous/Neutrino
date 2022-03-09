@@ -2,6 +2,7 @@
 using System.Text.Unicode;
 using Neutrino;
 using Neutrino.ContentSearch;
+using Neutrino.ContentSearch.Filters;
 
 var data = File.OpenRead("testing.txt");
 var bufI = new BufferedStream(data);
@@ -9,10 +10,10 @@ var bufI = new BufferedStream(data);
 var searcher = new ContentSearcher();
 
 var filter = new MatchContextBuilder()
-    .WithFilter(ContentFilter.CreateEquals(Encoding.UTF8.GetBytes("Hello, World!")))
-    .WithFilter(ContentFilter.CreateEquals(Encoding.UTF8.GetBytes("Hello, World!")))
-    .WithFilter(ContentFilter.CreateEquals(Encoding.UTF8.GetBytes("Hello, World!")));
-
+    .WithFilter(new AnyFilter())
+    .WithFilter(new EqualFilter(Encoding.UTF8.GetBytes("Hello, World!")))
+    .WithFilter(new AnyFixedFilter(1))
+    .WithFilter(new EqualFilter(Encoding.UTF8.GetBytes("@")));
 var ctx = searcher.AddPattern("Hello World Matcher", filter);
 
 searcher.Build();
@@ -26,6 +27,11 @@ while ((c = bufI.ReadByte()) != -1)
 }
 
 Console.WriteLine(ctx.IsMatch);
+
+foreach (var v in ctx.Results)
+{
+    Console.WriteLine(v);
+}
 
 // var searcher = new Searcher(new DirectoryInfo("C:\\"), new SearchOptions("**/*.txt", Concurrency: 5));
 //

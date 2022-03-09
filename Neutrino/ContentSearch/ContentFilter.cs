@@ -1,37 +1,33 @@
-﻿namespace Neutrino.ContentSearch;
+﻿using System.Runtime.CompilerServices;
 
-public class ContentFilter
+namespace Neutrino.ContentSearch;
+
+public abstract class ContentFilter
 {
     public FilterType Type { get; private set; }
-    public long Length { get; private set; }
-    public byte[] Value { get; private set; }
-    internal ContentFilter(){}
-    public SearchKey? Key { get; internal set; }
-    
-
-    public static ContentFilter CreateEquals(byte[] value)
-    {
-        return new ContentFilter()
-        {
-            Type = FilterType.Equals,
-            Length = value.Length,
-            Value = value
-        };
-    }
-
-    public static ContentFilter CreateNotEquals(byte[] value)
-    {
-        return new ContentFilter()
-        {
-            Type = FilterType.NotEquals,
-            Length = value.Length,
-            Value = value,
-        };
-    }
+    public long Length { get; protected set; }
+    public abstract long GetRealLength();
+    internal ContentFilter(FilterType type){ Type = type; }
+    public abstract void Initialize(Hasher hasher, int offset);
+    public abstract void Increment(long curIndex);
+    public abstract bool IsMatch(RabinKarp karp);
+    public abstract MatchResult? MoveNextByte(RabinKarp karp, MatchContext context);
 
     public enum FilterType
     {
         Equals,
-        NotEquals
+        NotEquals,
+        AnyFixed,
+        Any,
+        Compound
+    }
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool IsInBounds(long length, MatchContext context)
+    {
+        var index = context._curIndex;
+        var lastIndex = context._lastIndex;
+        var tLength = index - lastIndex;
+        return tLength >= length;
     }
 }

@@ -1,4 +1,6 @@
-﻿namespace Neutrino.Utils;
+﻿using System.Runtime.CompilerServices;
+
+namespace Neutrino.Utils;
 
 using System;
 using System.Collections;
@@ -119,10 +121,7 @@ public class CircularBuffer<T> : IEnumerable<T>
     /// Maximum capacity of the buffer. Elements pushed into the buffer after
     /// maximum capacity is reached (IsFull = true), will remove an element.
     /// </summary>
-    public int Capacity
-    {
-        get { return _buffer.Length; }
-    }
+    public int Capacity => _buffer.Length;
 
     /// <summary>
     /// Boolean indicating if Circular is at full capacity.
@@ -130,31 +129,18 @@ public class CircularBuffer<T> : IEnumerable<T>
     /// cause elements to be removed from the other end
     /// of the buffer.
     /// </summary>
-    public bool IsFull
-    {
-        get { return Size == Capacity; }
-    }
-
-    /// <summary>
-    /// True if has no elements.
-    /// </summary>
-    public bool IsEmpty
-    {
-        get { return Size == 0; }
-    }
+    public bool IsFull => Size == Capacity;
 
     /// <summary>
     /// Current buffer size (the number of elements that the buffer has).
     /// </summary>
-    public int Size
-    {
-        get { return _size; }
-    }
+    public int Size => _size;
 
     /// <summary>
     /// Element at the front of the buffer - this[0].
     /// </summary>
     /// <returns>The value of the element of type T at the front of the buffer.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public T Front()
     {
         ThrowIfEmpty();
@@ -165,6 +151,7 @@ public class CircularBuffer<T> : IEnumerable<T>
     /// Element at the back of the buffer - this[Size - 1].
     /// </summary>
     /// <returns>The value of the element of type T at the back of the buffer.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public T Back()
     {
         ThrowIfEmpty();
@@ -182,7 +169,7 @@ public class CircularBuffer<T> : IEnumerable<T>
     {
         get
         {
-            if (IsEmpty)
+            if (_size == 0)
             {
                 throw new IndexOutOfRangeException(string.Format("Cannot access index {0}. Buffer is empty", index));
             }
@@ -198,7 +185,7 @@ public class CircularBuffer<T> : IEnumerable<T>
         }
         set
         {
-            if (IsEmpty)
+            if (_size == 0)
             {
                 throw new IndexOutOfRangeException(string.Format("Cannot access index {0}. Buffer is empty", index));
             }
@@ -365,9 +352,10 @@ public class CircularBuffer<T> : IEnumerable<T>
 
     #endregion
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void ThrowIfEmpty(string message = "Cannot access an empty buffer.")
     {
-        if (IsEmpty)
+        if (_size == 0)
         {
             throw new InvalidOperationException(message);
         }
@@ -378,6 +366,7 @@ public class CircularBuffer<T> : IEnumerable<T>
     /// around if necessary.
     /// </summary>
     /// <param name="index"></param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void Increment(ref int index)
     {
         if (++index == Capacity)
@@ -391,6 +380,7 @@ public class CircularBuffer<T> : IEnumerable<T>
     /// around if necessary.
     /// </summary>
     /// <param name="index"></param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void Decrement(ref int index)
     {
         if (index == 0)
@@ -410,6 +400,7 @@ public class CircularBuffer<T> : IEnumerable<T>
     /// <param name='index'>
     /// External index.
     /// </param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private int InternalIndex(int index)
     {
         return _start + (index < (Capacity - _start) ? index : index - Capacity);
@@ -427,7 +418,7 @@ public class CircularBuffer<T> : IEnumerable<T>
 
     private ArraySegment<T> ArrayOne()
     {
-        if (IsEmpty)
+        if (_size == 0)
         {
             return new ArraySegment<T>(new T[0]);
         }
@@ -443,7 +434,7 @@ public class CircularBuffer<T> : IEnumerable<T>
 
     private ArraySegment<T> ArrayTwo()
     {
-        if (IsEmpty)
+        if (_size == 0)
         {
             return new ArraySegment<T>(new T[0]);
         }

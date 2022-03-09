@@ -2,7 +2,7 @@
 
 public class MatchContextBuilder
 {
-    public long StartingIndex { get; set; } = -1;
+    public long StartingIndex { get; set; } = 0;
     public List<ContentFilter> Filters { get; set; } = new();
 
     /// <summary>

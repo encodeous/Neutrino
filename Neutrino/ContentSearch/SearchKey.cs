@@ -1,4 +1,6 @@
-﻿namespace Neutrino.ContentSearch;
+﻿using System.Runtime.CompilerServices;
+
+namespace Neutrino.ContentSearch;
 
 public class SearchKey
 {
@@ -6,9 +8,11 @@ public class SearchKey
     public byte[] Key { get; private set; }
     public long Hash { get; private set; }
     private long prevIndex = -1;
+    public int Offset { get; private set; }
     
-    public SearchKey(byte[] key, Hasher hasher)
+    public SearchKey(byte[] key, Hasher hasher, int offset = 0)
     {
+        Offset = offset;
         _hasher = hasher;
         Key = key;
         if(key.Length <= 5) return;
@@ -21,15 +25,18 @@ public class SearchKey
         _hasher.Reset();
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Increment(long currentIndex)
     {
         if(Key.Length <= 5) return;
+        currentIndex -= Offset;
         if (prevIndex == currentIndex) return;
         prevIndex = currentIndex;
-        if(_hasher.Index < Key.Length)
+        if(currentIndex < Key.Length)
         {
             return;
         }
-        Hash = (Hash * _hasher.Prime) % _hasher.Modulo;
+
+        Hash = _hasher.UpdateKey(Hash);
     }
 }

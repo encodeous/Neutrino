@@ -1,4 +1,6 @@
-﻿namespace Neutrino.ContentSearch;
+﻿using System.Runtime.CompilerServices;
+
+namespace Neutrino.ContentSearch;
 
 public class Hasher
 {
@@ -17,15 +19,23 @@ public class Hasher
         Index = 0;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Increment()
     {
         CurrentBase = (CurrentBase * Prime) % Modulo;
         Index++;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public long UpdateHash(long oldHash, byte newData)
     {
         return (oldHash + ((newData + 1) * CurrentBase) % Modulo) % Modulo;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public long UpdateKey(long oldHash)
+    {
+        return (oldHash * Prime) % Modulo;
     }
 
     public long Prime {get; private set; }

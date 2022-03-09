@@ -1,4 +1,5 @@
 ﻿using System.Collections.ObjectModel;
+using Neutrino.ContentSearch.Filters;
 
 namespace Neutrino.ContentSearch;
 
@@ -7,65 +8,112 @@ public class MatchContext
     public MatchContext(long startingIndex, IReadOnlyList<ContentFilter> filters, Hasher hasher)
     {
         StartingIndex = startingIndex;
-        _waitUntil = startingIndex;
-        _filters = new Queue<ContentFilter>(filters);
+        _filters = new Queue<ContentFilter>();
+        var tmp = new Queue<ContentFilter>();
+        ContentFilter fi;
+        foreach (var filter in filters)
+        {
+            if (filter is AnyFilter)
+            {
+                if (tmp.Count != 0)
+                {
+                    if (tmp.Count > 1)
+                    {
+                        fi = new CompoundFilter(tmp);
+                    }
+                    else
+                    {
+                        fi = tmp.First();
+                    }
+                    tmp.Clear();
+                    fi.Initialize(hasher, 0);
+                    _filters.Enqueue(fi);
+                }
+                filter.Initialize(hasher, 0);
+                _filters.Enqueue(filter);
+            }
+            else
+            {
+                tmp.Enqueue(filter);
+            }
+        }
+        if (tmp.Count != 0)
+        {
+            if (tmp.Count > 1)
+            {
+                fi = new CompoundFilter(tmp);
+                    
+            }
+            else
+            {
+                fi = tmp.First();
+            }
+            tmp.Clear();
+            fi.Initialize(hasher, 0);
+            _filters.Enqueue(fi);
+        }
+
         foreach (var filter in _filters)
         {
-            if(filter.Key == null)
-            {
-                if (filter.Type is ContentFilter.FilterType.Equals or ContentFilter.FilterType.NotEquals)
-                {
-                    filter.Key = new SearchKey(filter.Value, hasher);
-                }
-                MaxMatchLength = Math.Max(MaxMatchLength, (int)filter.Length);
-            }
+            MaxMatchLength = Math.Max(MaxMatchLength, (int)filter.GetRealLength());
         }
     }
 
     public long StartingIndex { get; }
-    private Queue<ContentFilter> _filters { get; }
+    internal Queue<ContentFilter> _filters { get; }
     public ReadOnlyCollection<MatchResult> Results => _results.AsReadOnly();
     public bool IsComplete => _filters.Count == 0;
     public bool IsMatch => _filters.Count == 0 && _isMatch;
     internal int MaxMatchLength = 0;
-    public List<MatchResult> _results { get; } = new();
+    private List<MatchResult> _results { get; } = new();
 
     private bool _isMatch = true;
-    
-    private long _waitUntil = 0;
 
+    internal long _lastIndex;
+    internal long _curIndex;
+    internal bool _isWildcard;
     internal void MoveNextByte(RabinKarp karp, long curIndex)
     {
-        if (!_isMatch) return;
+        if (!_isMatch || _filters.Count == 0) return;
+        _curIndex = curIndex;
         foreach (var filter in _filters)
         {
-            filter.Key?.Increment(curIndex);
-        }
-        if(curIndex < _waitUntil)
-        {
-            return;
+            filter.Increment(curIndex);
         }
 
-        if (_filters.Count == 0) return;
-        var cfilter = _filters.First();
-        if (cfilter.Type == ContentFilter.FilterType.Equals)
+        var curFilter = _filters.Peek();
+        if (!ContentFilter.IsInBounds(curFilter.Length, this)) return;
+        var res = curFilter.MoveNextByte(karp, this);
+        if (res.HasValue)
         {
-            EvaluateEquality(curIndex, karp, true);
-        }
-        else if (cfilter.Type == ContentFilter.FilterType.NotEquals)
-        {
-            EvaluateEquality(curIndex, karp, false);
-        }
-    }
-
-    internal void EvaluateEquality(long curIndex, RabinKarp karp, bool expectedEquality)
-    {
-        var cfilter = _filters.First();
-        if (karp.Matches(cfilter.Key) == expectedEquality)
-        {
-            _results.Add(new MatchResult(curIndex - cfilter.Length + 1, curIndex));
             _filters.Dequeue();
-            if(_filters.Count != 0) _waitUntil = _filters.First().Length + curIndex;
+            if (_isWildcard)
+            {
+                _results.Add(new MatchResult(_lastIndex, res.Value.MatchBegin - 1));
+            }
+
+            if (curFilter is CompoundFilter cf)
+            {
+                long startIndex = curIndex - cf.Length + 1;
+                foreach (var cmpFilter in cf._filters)
+                {
+                    _results.Add(new MatchResult(startIndex, startIndex + cmpFilter.Length - 1));
+                    startIndex += cmpFilter.Length;
+                }
+            }
+            else
+            {
+                _results.Add(res.Value);
+            }
+            _lastIndex = curIndex;
+            _isWildcard = false;
+        }
+        else
+        {
+            if (!_isWildcard)
+            {
+                _isMatch = false;
+            }
         }
     }
 }
