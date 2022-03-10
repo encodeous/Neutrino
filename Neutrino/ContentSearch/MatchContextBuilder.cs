@@ -37,6 +37,16 @@ public class MatchContextBuilder
         Filters.AddRange(filters);
         return this;
     }
+
+    /// <summary>
+    /// Parses filters from a string
+    /// </summary>
+    /// <param name="filter"></param>
+    /// <returns></returns>
+    public MatchContextBuilder WithFilterString(string filter)
+    {
+        return this;
+    }
     
     public MatchContext Build(Hasher hasher)
     {

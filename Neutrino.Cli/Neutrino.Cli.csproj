@@ -11,4 +11,11 @@
       <ProjectReference Include="..\Neutrino\Neutrino.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <PackageReference Include="ByteSize" Version="2.1.1" />
+      <PackageReference Include="Spectre.Console" Version="0.43.0" />
+      <PackageReference Include="System.CommandLine" Version="2.0.0-beta3.22114.1" />
+      <PackageReference Include="System.CommandLine.Rendering" Version="0.4.0-alpha.22114.1" />
+    </ItemGroup>
+
 </Project>

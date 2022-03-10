@@ -5,7 +5,7 @@ namespace Neutrino.ContentSearch;
 public class Hasher
 {
     public long CurrentBase = 1;
-    public long Index = 0;
+    public long Index;
 
     public Hasher(long basePrime, long mod)
     {
@@ -29,7 +29,7 @@ public class Hasher
     [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.AggressiveInlining)]
     public long UpdateHash(long oldHash, byte newData)
     {
-        return (oldHash + ((newData + 1) * CurrentBase) % Modulo) % Modulo;
+        return (oldHash + (newData + 1) * CurrentBase) % Modulo;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.AggressiveInlining)]
@@ -38,6 +38,6 @@ public class Hasher
         return (oldHash * Prime) % Modulo;
     }
 
-    public long Prime {get; private set; }
-    public long Modulo {get; private set; }
+    public readonly long Prime;
+    public readonly long Modulo;
 }

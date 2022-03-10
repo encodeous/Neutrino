@@ -3,10 +3,8 @@
 public class ContentSearcher
 {
     private Hasher _hasher;
-    private Dictionary<string, MatchContext> _contextMap;
     private HashSet<MatchContext> _contexts;
     private MatchContext[] _cachedContexts;
-    public IReadOnlyDictionary<string, MatchContext> Contexts => _contextMap;
     private int _maxLength = 0;
     private RabinKarp _rabinKarp;
     /// <summary>
@@ -28,20 +26,13 @@ public class ContentSearcher
     public ContentSearcher()
     {
         _hasher = new Hasher(313, 1_000_000_007);
-        _contextMap = new ();
         _contexts = new();
     }
 
-    public MatchContext GetContext(string context)
-    {
-        return _contextMap[context];
-    }
-    
-    public MatchContext AddPattern(string name, MatchContextBuilder builder)
+    public MatchContext AddPattern(MatchContextBuilder builder)
     {
         var ctx = builder.Build(_hasher);
         _contexts.Add(ctx);
-        _contextMap[name] = ctx;
         _maxLength = Math.Max(_maxLength, ctx.MaxMatchLength);
         return ctx;
     }
