@@ -29,7 +29,7 @@ public class NeutrinoSearcher
         if (_options.MatchPattern != String.Empty)
         {
             _searchThreads = Math.Max(1, availThreads / 3);
-            _matchThreads = Math.Min(_searchThreads * 2, availThreads);
+            _matchThreads = Math.Max(1, availThreads - _searchThreads);
             for (int i = 0; i < _matchThreads; i++)
             {
                 Task.Run(() =>
