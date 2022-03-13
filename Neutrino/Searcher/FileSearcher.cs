@@ -3,6 +3,7 @@ using System.IO.Enumeration;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using DotNet.Globbing;
+using Neutrino.Utils;
 
 namespace Neutrino.Searcher;
 
@@ -25,60 +26,43 @@ public class FileSearcher
     }
     
     private int _taskId;
-    private volatile int _waitingThreads;
-    public Channel<SearchRequest> RequestQueue;
+    public ParallelStack<SearchRequest> Processor;
     public Channel<SearchResult> ResultQueue;
     private EnumerationOptions _enumerationOptions;
 
     public async IAsyncEnumerable<SearchResult> SearchAsync([EnumeratorCancellation] CancellationToken ct = default)
     {
-        RequestQueue = Channel.CreateUnbounded<SearchRequest>();
+        Processor = new ParallelStack<SearchRequest>(Options.Concurrency, ChannelBound, ct);
         ResultQueue = Channel.CreateBounded<SearchResult>(ChannelBound);
-        _taskId = 0;
-        ct.Register(() =>
+        var completion = () =>
         {
-            RequestQueue.Writer.TryComplete();
+            Processor.SharedChannel.Writer.TryComplete();
             ResultQueue.Writer.TryComplete();
-        });
-        await RequestQueue.Writer.WriteAsync(new SearchRequest()
+        };
+        _taskId = 0;
+        Processor.Token.Register(completion);
+        ct.Register(completion);
+        await Processor.SharedChannel.Writer.WriteAsync(new SearchRequest()
         {
             FolderName = RootDirectory.FullName,
             SearchDepth = 0
         }, ct);
         for (int i = 0; i < Options.Concurrency; i++)
         {
-            StartSearcher(ct);
+            var t = Processor.AssignThread();
+            Task.Run(() => ExecuteSearch(t, ct), ct);
         }
-        Task.Run(async () =>
-        {
-            while (!ct.IsCancellationRequested)
-            {
-                await Task.Delay(100);
-                if (RequestQueue.Reader.Count == 0 && _waitingThreads == Options.Concurrency)
-                {
-                    ResultQueue.Writer.TryComplete();
-                    RequestQueue.Writer.TryComplete();
-                }
-            }
-        });
         await foreach (var result in ResultQueue.Reader.ReadAllAsync())
         {
             yield return result;
         }
     }
-
-    private void StartSearcher(CancellationToken ct)
-    {
-        Task.Run(() => ExecuteSearch(ct), ct);
-    }
-    private async Task ExecuteSearch(CancellationToken ct = default)
+    private async Task ExecuteSearch(ParallelStack<SearchRequest>.StackAccessor accessor, CancellationToken ct = default)
     {
         var curState = new SearcherState(new List<SearchRequest>(), new List<SearchResult>());
-        while (!ct.IsCancellationRequested && !RequestQueue.Reader.Completion.IsCompleted)
+        while (!ct.IsCancellationRequested && !accessor.Stack.IsClosed)
         {
-            Interlocked.Increment(ref _waitingThreads);
-            var val = await RequestQueue.Reader.ReadAsync(ct);
-            Interlocked.Decrement(ref _waitingThreads);
+            var val = await accessor.Pop();
             curState.Depth = val.SearchDepth;
 
             try
@@ -86,9 +70,9 @@ public class FileSearcher
                 FileSystemEnumerator<object> ffe = new FastFileEnumerator<SearcherState>(val.FolderName, curState, ResultHandler, _enumerationOptions);
                 while (ffe.MoveNext()) {}
             }
-            catch (Exception e)
+            catch
             {
-                Console.WriteLine(e);
+                // ignored
             }
             foreach (var result in curState.Results)
             {
@@ -96,16 +80,16 @@ public class FileSearcher
             }
             foreach (var req in curState.Requests)
             {
-                await RequestQueue.Writer.WriteAsync(req, ct);
+                await accessor.Push(req);
             }
             curState.Requests.Clear();
             curState.Results.Clear();
         }
     }
-    
+
     void ResultHandler(FileSystemEntry res, SearcherState data)
     {
-        var fullPath = res.ToFullPath();
+        string fullPath = res.ToFullPath();
         var relPath = Path.GetRelativePath(RootDirectory.FullName, fullPath);
         if (res.IsDirectory && data.Depth + 1 < Options.MaxDepth)
         {

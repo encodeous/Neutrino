@@ -5,5 +5,6 @@ public record SearchOptions(
     bool IsJsonOutput,
     int Concurrency,
     long SizeBytes,
-    string MatchPattern
+    string MatchPattern,
+    string Path
     );

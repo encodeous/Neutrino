@@ -60,18 +60,27 @@
 // Console.WriteLine($"Found: {cnt},  Time: {DateTime.UtcNow - start}");
 
 using System.CommandLine;
-using System.Drawing;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using System.Text;
 using ByteSizeLib;
 using Neutrino.Cli;
 using Neutrino.Cli.Data;
+using Neutrino.ContentSearch;
 
 var curDir = new DirectoryInfo(Environment.CurrentDirectory);
 
 var root = new RootCommand("Neutrino is a lightning-speed file searcher.");
 
 var outputFormatter = new Option<bool>("--json", "Formats the output as JSON.");
+var path = new Option<string>("--path", "Specifies the directory to search in.");
+path.SetDefaultValue(curDir.FullName);
+path.AddValidator((v) =>
+{
+    var cp = v.GetValueOrDefault<string>();
+    if (!Directory.Exists(cp))
+    {
+        v.ErrorMessage = $"The specified path \"{cp}\" does not exist.";
+    }
+});
 
 var concurrency = new Option<int>("--conc", "Specifies the degree of concurrency to perform operations.");
 concurrency.SetDefaultValue((Environment.ProcessorCount + 1) / 2);
@@ -100,17 +109,26 @@ maxSize.AddValidator((v) =>
     }
 });
 
+root.Add(path);
 root.Add(outputFormatter);
 root.Add(concurrency);
 root.Add(maxSize);
 
 var globArg = new Argument<string>("file-name-pattern", "A glob pattern to match file names.");
-globArg.SetDefaultValue("*");
+globArg.SetDefaultValue("**/*");
 globArg.Arity = ArgumentArity.ExactlyOne;
 
 var searchArg = new Argument<string>("text-search-pattern", "Specifies a full-text-search pattern. See the documentation on the pattern format.");
 searchArg.SetDefaultValue("");
 searchArg.Arity = ArgumentArity.ExactlyOne;
+searchArg.AddValidator((v) =>
+{
+    var val = v.GetValueOrDefault<string>();
+    if (!PatternParser.TryParse(val, out _, Encoding.UTF8))
+    {
+        v.ErrorMessage = "Failed to parse the full-text-search pattern";
+    }
+});
 
 root.Add(globArg);
 root.Add(searchArg);
@@ -123,13 +141,13 @@ Console.CancelKeyPress += (e, c) =>
     c.Cancel = true;
 };
 
-root.SetHandler(async (string glob, bool isJson, int concur, string size, string search) =>
+root.SetHandler(async (string glob, bool isJson, int concur, string size, string search, string cPath) =>
 {
-    var opt = new SearchOptions(glob, isJson, concur, (long)ByteSize.Parse(size).Bytes, search);
+    var opt = new SearchOptions(glob, isJson, concur, (long)ByteSize.Parse(size).Bytes, search, cPath);
     var searcher = new NeutrinoSearcher(opt);
     await searcher.SearchAsync(cts.Token);
     cts.Cancel();
-}, globArg, outputFormatter, concurrency, maxSize, searchArg);
+}, globArg, outputFormatter, concurrency, maxSize, searchArg, path);
 
 
 return root.Invoke(args);

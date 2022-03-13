@@ -39,7 +39,7 @@ public class NeutrinoSearcher
             }
         }
 
-        _root = new DirectoryInfo(Environment.CurrentDirectory);
+        _root = new DirectoryInfo(_options.Path);
         _searcher = new FileSearcher(_root,
             new SearcherParameters(_options.Glob, Concurrency: _searchThreads));
         StartProcessing(ct);
@@ -69,7 +69,6 @@ public class NeutrinoSearcher
 
     private void PrintResult(FoundResult foundResult)
     {
-        AnsiConsole.Write(_channelResults.Reader.Count + " " + _searcher.RequestQueue.Reader.Count + " ");
         string fileFmt = $"{foundResult.FilePath}";
         if (foundResult is MatchedResult m)
         {
@@ -86,29 +85,60 @@ public class NeutrinoSearcher
 
     private async Task FullTextSearch(CancellationToken ct)
     {
-        while (!_fullTextSearchRequests.Reader.Completion.IsCompleted && !ct.IsCancellationRequested)
+        while (!ct.IsCancellationRequested)
         {
-            var val = await _fullTextSearchRequests.Reader.ReadAsync(ct);
-            var fs = File.OpenRead(val.FullFilePath);
-            var bsr = new BufferedStream(fs);
-            var builder = new MatchContextBuilder()
-                .WithFilterString(_options.MatchPattern);
-            var fts = new ContentSearcher();
-            var ctx = fts.AddPattern(builder);
-            fts.Build();
-
-            int data;
-            while ((data = bsr.ReadByte()) != -1 && !ct.IsCancellationRequested)
+            try
             {
-                fts.AddByte((byte)data);
+                ValueTask<SearchResult> task;
+                lock (_searcher)
+                {
+                    if (_fullTextSearchRequests.Reader.Count != 0 ||
+                        !_fullTextSearchRequests.Reader.Completion.IsCompleted)
+                    {
+                        task = _fullTextSearchRequests.Reader.ReadAsync(ct);
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+
+                var val = await task;
+                var fi = new FileInfo(val.FullFilePath);
+                if(fi.Length > _options.SizeBytes) continue;
+                var fs = File.OpenRead(val.FullFilePath);
+                var bsr = new BufferedStream(fs);
+                var builder = new MatchContextBuilder()
+                    .WithFilterString(_options.MatchPattern);
+                var fts = new ContentSearcher();
+                var ctx = fts.AddPattern(builder);
+                fts.Build();
+
+                int data;
+                while ((data = bsr.ReadByte()) != -1 && !ct.IsCancellationRequested)
+                {
+                    fts.AddByte((byte)data);
+                }
+
+                if (ctx.IsMatch)
+                {
+                    await _channelResults.Writer.WriteAsync(new MatchedResult(val.RelFilePath, ctx.Results.ToArray()), ct);
+                }
             }
-
-            if (ctx.IsMatch)
+            catch
             {
-                await _channelResults.Writer.WriteAsync(new MatchedResult(val.RelFilePath, ctx.Results.ToArray()), ct);
+                // ignore
             }
         }
-        _channelResults.Writer.TryComplete();
+
+        lock (_searcher)
+        {
+            _matchThreads--;
+            if (_matchThreads == 0)
+            {
+                _channelResults.Writer.TryComplete();
+            }
+        }
     }
 
     private void StartProcessing(CancellationToken ct)
@@ -126,9 +156,14 @@ public class NeutrinoSearcher
                     await _fullTextSearchRequests.Writer.WriteAsync(res, ct);
                 }
             }
-
-            _channelResults.Writer.TryComplete();
-            _fullTextSearchRequests.Writer.TryComplete();
+            if (_options.MatchPattern == "")
+            {
+                _channelResults.Writer.TryComplete();
+            }
+            else
+            {
+                _fullTextSearchRequests.Writer.TryComplete();
+            }
         }, ct);
     }
 }
