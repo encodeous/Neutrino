@@ -4,20 +4,8 @@ namespace Neutrino.ContentSearch;
 
 public class MatchContextBuilder
 {
-    public long StartingIndex { get; set; } = 0;
     public List<ContentFilter> Filters { get; set; } = new();
 
-    /// <summary>
-    /// Fixes the starting point of the pattern to be a specific location in the file.
-    /// </summary>
-    /// <param name="start">Starting location</param>
-    /// <returns></returns>
-    public MatchContextBuilder WithStart(long start)
-    {
-        StartingIndex = start;
-        return this;
-    }
-    
     /// <summary>
     /// Adds a filter to the context.
     /// </summary>
@@ -54,6 +42,6 @@ public class MatchContextBuilder
     
     public MatchContext Build(Hasher hasher)
     {
-        return new MatchContext(StartingIndex, Filters, hasher);
+        return new MatchContext(Filters, hasher);
     }
 }

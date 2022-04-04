@@ -4,7 +4,7 @@ namespace Neutrino.ContentSearch;
 
 public abstract class ContentFilter
 {
-    public FilterType Type { get; private set; }
+    public FilterType Type { get; }
     public long Length { get; protected set; }
     public SearchKey[] Keys { get; protected set; } = Array.Empty<SearchKey>();
     public abstract long GetRealLength();

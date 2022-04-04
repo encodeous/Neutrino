@@ -83,7 +83,7 @@ public class PatternParser
                 var success = long.TryParse(val[(i+1)..k], out var result);
                 if (!success) return false;
                 v.Add(new AnyFixedFilter(result));
-                i = k + 1;
+                i = k;
             }
             else if (isInText)
             {

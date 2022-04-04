@@ -25,6 +25,7 @@ public sealed class AnyFilter : ContentFilter
     {
         context._filters.Dequeue();
         context._isWildcard = true;
+        context._repeatCurrentByte = true;
         return new MatchResult(0, 0, false);
     }
 }

@@ -6,9 +6,8 @@ namespace Neutrino.ContentSearch;
 
 public class MatchContext
 {
-    public MatchContext(long startingIndex, IReadOnlyList<ContentFilter> filters, Hasher hasher)
+    public MatchContext(IReadOnlyList<ContentFilter> filters, Hasher hasher)
     {
-        StartingIndex = startingIndex;
         _filters = new Queue<ContentFilter>();
         var tmp = new Queue<ContentFilter>();
         ContentFilter fi;
@@ -35,6 +34,7 @@ public class MatchContext
             }
             else
             {
+                if(filter.Length == 0) continue;
                 tmp.Enqueue(filter);
             }
         }
@@ -58,11 +58,15 @@ public class MatchContext
         {
             MaxMatchLength = Math.Max(MaxMatchLength, (int)filter.GetRealLength());
         }
+
+        if (_filters.Count == 1 && _filters.First() is AnyFilter)
+        {
+            _filters.Clear();
+        }
         _filterCache = _filters.ToArray();
     }
 
     internal int Collisions;
-    public long StartingIndex { get; }
     internal Queue<ContentFilter> _filters { get; }
     internal ContentFilter[] _filterCache { get; private set; }
     public ReadOnlyCollection<MatchResult> Results => _results.AsReadOnly();
@@ -72,8 +76,9 @@ public class MatchContext
     private List<MatchResult> _results { get; } = new();
 
     private bool _isMatch = true;
+    internal bool _repeatCurrentByte = false;
 
-    internal long _lastIndex;
+    internal long _lastIndex = -1;
     internal long _curIndex;
     internal bool _isWildcard;
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
@@ -89,9 +94,17 @@ public class MatchContext
             }
         }
 
+        ApplyFilter:
         var curFilter = _filters.Peek();
         if (!ContentFilter.IsInBounds(curFilter.Length, this)) return;
         var res = curFilter.MoveNextByte(karp, this);
+
+        if (_repeatCurrentByte && _filters.Count != 0)
+        {
+            _repeatCurrentByte = false;
+            goto ApplyFilter;
+        }
+        
         if (res.IsSuccess)
         {
             _filters.Dequeue();
