@@ -9,7 +9,6 @@ namespace Neutrino.Searcher;
 
 public class FileSearcher
 {
-    public const int ChannelBound = 10000;
     public DirectoryInfo RootDirectory { get; }
     public Glob NameMatcher { get; }
     public SearcherParameters Options { get; }
@@ -25,44 +24,21 @@ public class FileSearcher
         };
     }
     
-    private int _taskId;
-    public ParallelStack<SearchRequest> Processor;
-    public Channel<SearchResult> ResultQueue;
     private EnumerationOptions _enumerationOptions;
 
-    public async IAsyncEnumerable<SearchResult> SearchAsync([EnumeratorCancellation] CancellationToken ct = default)
+    public IEnumerable<SearchResult> Search([EnumeratorCancellation] CancellationToken ct = default)
     {
-        Processor = new ParallelStack<SearchRequest>(Options.Concurrency, ChannelBound, ct);
-        ResultQueue = Channel.CreateBounded<SearchResult>(ChannelBound);
-        var completion = () =>
-        {
-            Processor.SharedChannel.Writer.TryComplete();
-            ResultQueue.Writer.TryComplete();
-        };
-        _taskId = 0;
-        Processor.Token.Register(completion);
-        ct.Register(completion);
-        await Processor.SharedChannel.Writer.WriteAsync(new SearchRequest()
+        var requests = new Stack<SearchRequest>();
+        
+        var curState = new SearcherState(new List<SearchRequest>(), new List<SearchResult>());
+        requests.Push(new SearchRequest()
         {
             FolderName = RootDirectory.FullName,
             SearchDepth = 0
-        }, ct);
-        for (int i = 0; i < Options.Concurrency; i++)
+        });
+        while (!ct.IsCancellationRequested && requests.Count != 0)
         {
-            var t = Processor.AssignThread();
-            Task.Run(() => ExecuteSearch(t, ct), ct);
-        }
-        await foreach (var result in ResultQueue.Reader.ReadAllAsync())
-        {
-            yield return result;
-        }
-    }
-    private async Task ExecuteSearch(ParallelStack<SearchRequest>.StackAccessor accessor, CancellationToken ct = default)
-    {
-        var curState = new SearcherState(new List<SearchRequest>(), new List<SearchResult>());
-        while (!ct.IsCancellationRequested && !accessor.Stack.IsClosed)
-        {
-            var val = await accessor.Pop();
+            var val = requests.Pop();
             curState.Depth = val.SearchDepth;
 
             try
@@ -74,13 +50,13 @@ public class FileSearcher
             {
                 // ignored
             }
-            foreach (var result in curState.Results)
+            foreach(var req in curState.Requests)
             {
-                await ResultQueue.Writer.WriteAsync(result, ct);
+                requests.Push(req);
             }
-            foreach (var req in curState.Requests)
+            foreach (var res in curState.Results)
             {
-                await accessor.Push(req);
+                yield return res;
             }
             curState.Requests.Clear();
             curState.Results.Clear();
@@ -104,5 +80,8 @@ public class FileSearcher
         }
     }
 
-    public record struct SearcherState(List<SearchRequest> Requests, List<SearchResult> Results, int Depth = 0);
+    public record SearcherState(List<SearchRequest> Requests, List<SearchResult> Results)
+    {
+        public int Depth = 0;
+    }
 }

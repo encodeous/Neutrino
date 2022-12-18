@@ -16,17 +16,20 @@ public class NeutrinoSearcher
     private bool _advancedOutput;
     private int _searchThreads, _matchThreads;
     private FileSearcher _searcher;
+    private SemaphoreSlim _threadReturns;
 
     public NeutrinoSearcher(SearchOptions options)
     {
         _options = options;
+        _fullTextSearchRequests = Channel.CreateBounded<SearchResult>(options.Concurrency);
     }
 
     public async Task SearchAsync(CancellationToken ct)
     {
         var availThreads = _options.Concurrency;
         _searchThreads = availThreads;
-        if (_options.MatchPattern != String.Empty)
+        _threadReturns = new SemaphoreSlim(_options.Concurrency);
+        if (_options.MatchPattern != "")
         {
             _searchThreads = Math.Max(1, availThreads / 3);
             _matchThreads = Math.Max(1, availThreads - _searchThreads);
@@ -42,7 +45,6 @@ public class NeutrinoSearcher
         _root = new DirectoryInfo(_options.Path);
         _searcher = new FileSearcher(_root,
             new SearcherParameters(_options.Glob, Concurrency: _searchThreads));
-        StartProcessing(ct);
         if (!_options.IsJsonOutput)
         {
             if (AnsiConsole.Console.Profile.Capabilities.Ansi
@@ -56,6 +58,7 @@ public class NeutrinoSearcher
                 AnsiConsole.WriteLine(_options.ToString());
                 AnsiConsole.Write(new Rule());
             }
+            StartProcessing(ct);
             await foreach (var foundResult in _channelResults.Reader.ReadAllAsync(ct))
             {
                 PrintResult(foundResult);
@@ -63,6 +66,7 @@ public class NeutrinoSearcher
         }
         else
         {
+            StartProcessing(ct);
             await JsonSerializer.SerializeAsync(Console.OpenStandardOutput(), _channelResults.Reader.ReadAllAsync(ct), cancellationToken: ct);
         }
     }
@@ -81,63 +85,54 @@ public class NeutrinoSearcher
     }
 
     private Channel<FoundResult> _channelResults = Channel.CreateUnbounded<FoundResult>();
-    private Channel<SearchResult> _fullTextSearchRequests = Channel.CreateBounded<SearchResult>(FileSearcher.ChannelBound);
+    private Channel<SearchResult> _fullTextSearchRequests;
 
     private async Task FullTextSearch(CancellationToken ct)
     {
-        while (!ct.IsCancellationRequested)
+        try
         {
-            try
+            while (!ct.IsCancellationRequested)
             {
-                ValueTask<SearchResult> task;
-                lock (_searcher)
-                {
-                    if (_fullTextSearchRequests.Reader.Count != 0 ||
-                        !_fullTextSearchRequests.Reader.Completion.IsCompleted)
-                    {
-                        task = _fullTextSearchRequests.Reader.ReadAsync(ct);
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-
-                var val = await task;
+                var val = await _fullTextSearchRequests.Reader.ReadAsync(ct);
                 var fi = new FileInfo(val.FullFilePath);
                 if(fi.Length > _options.SizeBytes) continue;
-                var fs = File.OpenRead(val.FullFilePath);
-                var bsr = new BufferedStream(fs);
+                FileStream fs;
+                try
+                {
+                    fs = File.OpenRead(val.FullFilePath);
+                }
+                catch
+                {
+                    // ignored
+                    continue;
+                }
+                var buf = new byte[8192];
                 var builder = new MatchContextBuilder()
                     .WithFilterString(_options.MatchPattern);
                 var fts = new ContentSearcher();
                 var ctx = fts.AddPattern(builder);
                 fts.Build();
-
-                int data;
-                while ((data = bsr.ReadByte()) != -1 && !ct.IsCancellationRequested)
+                int len;
+                while ((len = await fs.ReadAsync(buf, ct)) != 0)
                 {
-                    fts.AddByte((byte)data);
+                    for (int i = 0; i < len && !ct.IsCancellationRequested; i++)
+                    {
+                        fts.AddByte(buf[i]);
+                    }
                 }
-
                 if (ctx.IsMatch)
                 {
                     await _channelResults.Writer.WriteAsync(new MatchedResult(val.RelFilePath, ctx.Results.ToArray()), ct);
                 }
             }
-            catch
-            {
-                // ignore
-            }
         }
-
-        lock (_searcher)
+        catch (Exception e)
         {
-            _matchThreads--;
-            if (_matchThreads == 0)
-            {
-                _channelResults.Writer.TryComplete();
-            }
+            Console.WriteLine($"Unhandled exception: {e.Message}{e.StackTrace}");
+        }
+        finally
+        {
+            _threadReturns.Release();
         }
     }
 
@@ -145,24 +140,33 @@ public class NeutrinoSearcher
     {
         Task.Run(async () =>
         {
-            await foreach (var res in _searcher.SearchAsync(ct))
+            try
             {
-                if (_options.MatchPattern == "")
+                foreach (var res in _searcher.Search(ct))
                 {
-                    await _channelResults.Writer.WriteAsync(new FoundResult(res.RelFilePath), ct);
+                    if (_options.MatchPattern == "")
+                    {
+                        await _channelResults.Writer.WriteAsync(new FoundResult(res.RelFilePath), ct);
+                    }
+                    else
+                    {
+                        await _fullTextSearchRequests.Writer.WriteAsync(res, ct);
+                    }
                 }
-                else
+
+                if (_options.MatchPattern != "")
                 {
-                    await _fullTextSearchRequests.Writer.WriteAsync(res, ct);
+                    await _threadReturns.WaitAsync();
                 }
             }
-            if (_options.MatchPattern == "")
+            catch (Exception e)
             {
-                _channelResults.Writer.TryComplete();
+                Console.WriteLine($"Unhandled exception: {e.Message}{e.StackTrace}");
             }
-            else
+            finally
             {
-                _fullTextSearchRequests.Writer.TryComplete();
+                _channelResults?.Writer.TryComplete();
+                _fullTextSearchRequests?.Writer.TryComplete();
             }
         }, ct);
     }
