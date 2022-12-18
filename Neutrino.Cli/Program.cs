@@ -146,7 +146,6 @@ root.SetHandler(async (string glob, bool isJson, int concur, string size, string
     var opt = new SearchOptions(glob, isJson, concur, (long)ByteSize.Parse(size).Bytes, search, cPath);
     var searcher = new NeutrinoSearcher(opt);
     await searcher.SearchAsync(cts.Token);
-    cts.Cancel();
 }, globArg, outputFormatter, concurrency, maxSize, searchArg, path);
 
 

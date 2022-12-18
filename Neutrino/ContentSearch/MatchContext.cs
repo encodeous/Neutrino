@@ -82,9 +82,9 @@ public class MatchContext
     internal long _curIndex;
     internal bool _isWildcard;
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    internal void MoveNextByte(RabinKarp karp, long curIndex)
+    internal bool MoveNextByte(RabinKarp karp, long curIndex)
     {
-        if (!_isMatch || _filters.Count == 0) return;
+        if (!_isMatch || _filters.Count == 0) return false;
         _curIndex = curIndex;
         foreach (var filter in _filterCache)
         {
@@ -96,7 +96,7 @@ public class MatchContext
 
         ApplyFilter:
         var curFilter = _filters.Peek();
-        if (!ContentFilter.IsInBounds(curFilter.Length, this)) return;
+        if (!ContentFilter.IsInBounds(curFilter.Length, this)) return true;
         var res = curFilter.MoveNextByte(karp, this);
 
         if (_repeatCurrentByte && _filters.Count != 0)
@@ -135,7 +135,10 @@ public class MatchContext
             if (!_isWildcard)
             {
                 _isMatch = false;
+                return false;
             }
         }
+
+        return true;
     }
 }

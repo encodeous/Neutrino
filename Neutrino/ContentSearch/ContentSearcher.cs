@@ -44,14 +44,15 @@ public class ContentSearcher
         _cachedContexts = _contexts.ToArray();
     }
 
-    public void AddByte(byte b)
+    public bool AddByte(byte b)
     {
         if(_rabinKarp == null) throw new InvalidOperationException("Not built yet");
         _rabinKarp.AddByte(b);
         foreach(var k in _cachedContexts)
         {
-            k.MoveNextByte(_rabinKarp, _hasher.Index);
+            if (!k.MoveNextByte(_rabinKarp, _hasher.Index)) return false;
         }
         _hasher.Increment();
+        return true;
     }
 }

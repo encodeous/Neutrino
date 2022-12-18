@@ -1,8 +1,11 @@
-﻿using System.Collections.Concurrent;
+﻿using System.Buffers;
+using System.Collections.Concurrent;
+using System.Collections.ObjectModel;
 using System.IO.Enumeration;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using DotNet.Globbing;
+using Neutrino.ContentSearch;
 using Neutrino.Utils;
 
 namespace Neutrino.Searcher;
@@ -12,6 +15,7 @@ public class FileSearcher
     public DirectoryInfo RootDirectory { get; }
     public Glob NameMatcher { get; }
     public SearcherParameters Options { get; }
+    public NeutrinoStats Statistics { get; private set; }
 
     public FileSearcher(DirectoryInfo directory, SearcherParameters options)
     {
@@ -22,11 +26,12 @@ public class FileSearcher
         {
             AttributesToSkip = FileAttributes.System
         };
+        Statistics = new NeutrinoStats();
     }
     
     private EnumerationOptions _enumerationOptions;
 
-    public IEnumerable<SearchResult> Search([EnumeratorCancellation] CancellationToken ct = default)
+    public IEnumerable<SearchResult> Search(CancellationToken ct = default)
     {
         var requests = new Stack<SearchRequest>();
         
@@ -63,20 +68,77 @@ public class FileSearcher
         }
     }
 
+    public async Task<ReadOnlyCollection<MatchResult>> DoesFileMatch(string filePath, string filterString, CancellationToken ct)
+    {
+        FileStream fs;
+        try
+        {
+            fs = File.OpenRead(filePath);
+        }
+        catch
+        {
+            // ignored
+            return new ReadOnlyCollection<MatchResult>(ArraySegment<MatchResult>.Empty);
+        }
+        var buf = ArrayPool<byte>.Shared.Rent(8192);
+        try
+        {
+            var builder = new MatchContextBuilder()
+                .WithFilterString(filterString);
+            var fts = new ContentSearcher();
+            var ctx = fts.AddPattern(builder);
+            fts.Build();
+            int len;
+            while ((len = await fs.ReadAsync(buf, ct)) != 0)
+            {
+                for (int i = 0; i < len && !ct.IsCancellationRequested; i++)
+                {
+                    if (!fts.AddByte(buf[i]))
+                    {
+                        goto no_match;
+                    }
+                }
+
+                Interlocked.Add(ref Statistics._bytesRead, len);
+            }
+
+            if (ctx.IsMatch)
+            {
+                Interlocked.Increment(ref Statistics._objectsContentMatched);
+                return ctx.Results;
+            }
+            no_match:
+            return new ReadOnlyCollection<MatchResult>(ArraySegment<MatchResult>.Empty);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buf);
+        }
+    }
+
     void ResultHandler(FileSystemEntry res, SearcherState data)
     {
-        string fullPath = res.ToFullPath();
-        var relPath = Path.GetRelativePath(RootDirectory.FullName, fullPath);
-        if (res.IsDirectory && data.Depth + 1 < Options.MaxDepth)
+        try
         {
-            data.Requests.Add(new SearchRequest() { FolderName = fullPath, SearchDepth = data.Depth + 1});
-        }
-        else
-        {
-            if (NameMatcher.IsMatch(relPath))
+            var fullPath = res.ToFullPath();
+            var relPath = Path.GetRelativePath(RootDirectory.FullName, fullPath);
+            Statistics._objectsDiscovered++;
+            if (res.IsDirectory && data.Depth + 1 < Options.MaxDepth)
             {
-                data.Results.Add(new SearchResult() { FullFilePath = fullPath, RelFilePath = relPath });
+                data.Requests.Add(new SearchRequest() { FolderName = fullPath, SearchDepth = data.Depth + 1});
             }
+            else
+            {
+                if (NameMatcher.IsMatch(relPath))
+                {
+                    Statistics._objectsGlobMatched++;
+                    data.Results.Add(new SearchResult() { FullFilePath = fullPath, RelFilePath = relPath });
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // ignored
         }
     }
 

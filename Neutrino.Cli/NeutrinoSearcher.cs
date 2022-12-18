@@ -1,6 +1,8 @@
 ﻿using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Threading.Channels;
+using ByteSizeLib;
 using Neutrino.Cli.Data;
 using Neutrino.ContentSearch;
 using Neutrino.Searcher;
@@ -21,7 +23,6 @@ public class NeutrinoSearcher
     public NeutrinoSearcher(SearchOptions options)
     {
         _options = options;
-        _fullTextSearchRequests = Channel.CreateBounded<SearchResult>(options.Concurrency);
     }
 
     public async Task SearchAsync(CancellationToken ct)
@@ -29,39 +30,61 @@ public class NeutrinoSearcher
         var availThreads = _options.Concurrency;
         _searchThreads = availThreads;
         _threadReturns = new SemaphoreSlim(_options.Concurrency);
+        _fullTextSearchRequests = Channel.CreateBounded<SearchResult>(_options.Concurrency);
+        _channelResults = Channel.CreateUnbounded<FoundResult>();
         if (_options.MatchPattern != "")
         {
             _searchThreads = Math.Max(1, availThreads / 3);
             _matchThreads = Math.Max(1, availThreads - _searchThreads);
             for (int i = 0; i < _matchThreads; i++)
             {
-                Task.Run(() =>
-                {
-                    return FullTextSearch(ct);
-                }, ct);
+                Task.Run(() => FullTextSearch(ct), ct);
             }
         }
 
         _root = new DirectoryInfo(_options.Path);
         _searcher = new FileSearcher(_root,
             new SearcherParameters(_options.Glob, Concurrency: _searchThreads));
+        var isAnsi = AnsiConsole.Console.Profile.Capabilities.Ansi
+                     && AnsiConsole.Console.Profile.Capabilities.Interactive;
         if (!_options.IsJsonOutput)
         {
-            if (AnsiConsole.Console.Profile.Capabilities.Ansi
-                && AnsiConsole.Console.Profile.Capabilities.Interactive)
+            if (isAnsi)
             {
                 _advancedOutput = true;
                 AnsiConsole.Write(
                     new FigletText("Neutrino")
                         .LeftAligned());
+                AnsiConsole.Write(new Text("Accelerated File Searcher\n", new Style(decoration: Decoration.Italic)));
                 AnsiConsole.Write(new Rule("Search Options").LeftAligned());
                 AnsiConsole.WriteLine(_options.ToString());
                 AnsiConsole.Write(new Rule());
             }
-            StartProcessing(ct);
-            await foreach (var foundResult in _channelResults.Reader.ReadAllAsync(ct))
+
+            var start = Stopwatch.GetTimestamp();
+            try
             {
-                PrintResult(foundResult);
+                StartProcessing(ct);
+                await foreach (var foundResult in _channelResults.Reader.ReadAllAsync(ct))
+                {
+                    PrintResult(foundResult);
+                }
+            }
+            finally
+            {
+                if (isAnsi)
+                {
+                    AnsiConsole.Write(new Rule("Search Results").LeftAligned());
+                    if (_options.MatchPattern == "")
+                    {
+                        AnsiConsole.WriteLine($"{_searcher.Statistics.ObjectsGlobMatched:N0} match(es) out of {_searcher.Statistics.ObjectsDiscovered:N0} object(s) in {Stopwatch.GetElapsedTime(start)}.");
+                    }
+                    else
+                    {
+                        AnsiConsole.WriteLine($"{_searcher.Statistics.ObjectsContentMatched:N0} match(es) out of {_searcher.Statistics.ObjectsDiscovered:N0} object(s), with {ByteSize.FromBytes(_searcher.Statistics.BytesRead).ToString("#.#")} read in {Stopwatch.GetElapsedTime(start)}.");
+                    }
+                    AnsiConsole.Write(new Rule());
+                }
             }
         }
         else
@@ -73,7 +96,7 @@ public class NeutrinoSearcher
 
     private void PrintResult(FoundResult foundResult)
     {
-        string fileFmt = $"{foundResult.FilePath}";
+        var fileFmt = $"{foundResult.FilePath}";
         if (foundResult is MatchedResult m)
         {
             AnsiConsole.WriteLine($"{fileFmt} : Matches @ {string.Join(" - ", m.Matches.Select(x => { return $"[{x.MatchBegin}, {x.MatchEnd}]"; }))}");
@@ -84,48 +107,26 @@ public class NeutrinoSearcher
         }
     }
 
-    private Channel<FoundResult> _channelResults = Channel.CreateUnbounded<FoundResult>();
+    private Channel<FoundResult> _channelResults;
     private Channel<SearchResult> _fullTextSearchRequests;
 
     private async Task FullTextSearch(CancellationToken ct)
     {
         try
         {
-            while (!ct.IsCancellationRequested)
+            while (!ct.IsCancellationRequested && await _fullTextSearchRequests.Reader.WaitToReadAsync(ct))
             {
                 var val = await _fullTextSearchRequests.Reader.ReadAsync(ct);
                 var fi = new FileInfo(val.FullFilePath);
                 if(fi.Length > _options.SizeBytes) continue;
-                FileStream fs;
-                try
+                var matches = await _searcher.DoesFileMatch(val.FullFilePath, _options.MatchPattern, ct);
+                if (matches.Any())
                 {
-                    fs = File.OpenRead(val.FullFilePath);
-                }
-                catch
-                {
-                    // ignored
-                    continue;
-                }
-                var buf = new byte[8192];
-                var builder = new MatchContextBuilder()
-                    .WithFilterString(_options.MatchPattern);
-                var fts = new ContentSearcher();
-                var ctx = fts.AddPattern(builder);
-                fts.Build();
-                int len;
-                while ((len = await fs.ReadAsync(buf, ct)) != 0)
-                {
-                    for (int i = 0; i < len && !ct.IsCancellationRequested; i++)
-                    {
-                        fts.AddByte(buf[i]);
-                    }
-                }
-                if (ctx.IsMatch)
-                {
-                    await _channelResults.Writer.WriteAsync(new MatchedResult(val.RelFilePath, ctx.Results.ToArray()), ct);
+                    await _channelResults.Writer.WriteAsync(new MatchedResult(val.RelFilePath, matches.ToArray()), ct);
                 }
             }
         }
+        catch (FileNotFoundException){}
         catch (Exception e)
         {
             Console.WriteLine($"Unhandled exception: {e.Message}{e.StackTrace}");
@@ -156,7 +157,7 @@ public class NeutrinoSearcher
 
                 if (_options.MatchPattern != "")
                 {
-                    await _threadReturns.WaitAsync();
+                    await _threadReturns.WaitAsync(ct);
                 }
             }
             catch (Exception e)

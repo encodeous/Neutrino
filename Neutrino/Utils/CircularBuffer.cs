@@ -241,14 +241,14 @@ internal class CircularBuffer<T> : IEnumerable<T>
         if (Size == Capacity)
         {
             IsFull = true;
-            _buffer[_end] = item;
-            Increment(ref _end);
+            _buffer[_end++] = item;
+            _end %= Capacity;
             _start = _end;
         }
         else
         {
-            _buffer[_end] = item;
-            Increment(ref _end);
+            _buffer[_end++] = item;
+            _end %= Capacity;
             ++Size;
         }
     }
@@ -405,10 +405,7 @@ internal class CircularBuffer<T> : IEnumerable<T>
     [MethodImpl(MethodImplOptions.AggressiveOptimization | MethodImplOptions.AggressiveInlining)]
     private void Increment(ref int index)
     {
-        if (++index == Capacity)
-        {
-            index = 0;
-        }
+        index = (++index) % Capacity;
     }
 
     /// <summary>
