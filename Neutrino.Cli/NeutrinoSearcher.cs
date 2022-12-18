@@ -127,6 +127,7 @@ public class NeutrinoSearcher
             }
         }
         catch (FileNotFoundException){}
+        catch (ChannelClosedException){}
         catch (Exception e)
         {
             Console.WriteLine($"Unhandled exception: {e.Message}{e.StackTrace}");
