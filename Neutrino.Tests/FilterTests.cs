@@ -49,6 +49,8 @@ public class FilterTests
     [InlineData("Hello, Worlt!", "*'Hello, '!'Wer'<1>'t'", true)]
     [InlineData("Hello, Worlds!", "'Hello'*!'s'", true)]
     [InlineData("Hello, Worlds!", "'Hello'*'s!'", true)]
+    [InlineData("Hello, Worlds!", "*'ello'*'s!'", true)]
+    [InlineData("no you", "*'o y'*", true)]
     public void TestWithPattern(string source, string pattern, bool expected)
     {
         var builder = new MatchContextBuilder()
@@ -59,7 +61,10 @@ public class FilterTests
         var bytes = Encoding.UTF8.GetBytes(source);
         foreach (var b in bytes)
         {
-            searcher.AddByte(b);
+            if (!searcher.AddByte(b))
+            {
+                Assert.False(expected);
+            }
         }
         Assert.Equal(pat.IsMatch, expected);
     }

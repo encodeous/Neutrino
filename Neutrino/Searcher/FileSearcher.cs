@@ -95,19 +95,19 @@ public class FileSearcher
                 {
                     if (!fts.AddByte(buf[i]))
                     {
-                        goto no_match;
+                        goto end_match;
                     }
                 }
 
                 Interlocked.Add(ref Statistics._bytesRead, len);
             }
 
+            end_match:
             if (ctx.IsMatch)
             {
                 Interlocked.Increment(ref Statistics._objectsContentMatched);
                 return ctx.Results;
             }
-            no_match:
             return new ReadOnlyCollection<MatchResult>(ArraySegment<MatchResult>.Empty);
         }
         finally
